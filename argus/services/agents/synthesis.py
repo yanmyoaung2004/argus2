@@ -280,15 +280,24 @@ class SynthesisAgent(BaseAgent):
             conn.close()
 
     def _find_match(self, conn: sqlite3.Connection, entity: Entity) -> dict[str, Any] | None:
+        name_lower = entity.name.lower()
+        prefix = name_lower[:4]
+
         candidates = conn.execute(
-            "SELECT id, name FROM entities ORDER BY id"
+            "SELECT id, name FROM entities WHERE LOWER(name) LIKE ? ORDER BY id LIMIT 200",
+            (f"{prefix}%",),
         ).fetchall()
+
+        if not candidates:
+            candidates = conn.execute(
+                "SELECT id, name FROM entities ORDER BY id LIMIT 1000"
+            ).fetchall()
 
         best: dict[str, Any] | None = None
         best_score = 0.0
 
         for row in candidates:
-            score = SequenceMatcher(None, entity.name.lower(), row[1].lower()).ratio()
+            score = SequenceMatcher(None, name_lower, row[1].lower()).ratio()
             if score > best_score and score >= self.SIMILARITY_THRESHOLD_LLM:
                 best_score = score
                 best = {"id": row[0], "name": row[1], "similarity": score}
