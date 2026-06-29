@@ -11,6 +11,7 @@ import redis as redis_lib
 
 from argus.services.knowledge_graph.schema import init_db
 from argus.shared.config import settings
+from argus.shared.idempotency import IdempotencyChecker
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ class KGWriter:
         self._lock = threading.Lock()
         self._buffer: list[dict[str, Any]] = []
         self._running = False
+        self._idempotency = IdempotencyChecker(db_path=self._db_path)
+        self._cleanup_counter = 0
 
     def _get_redis(self) -> redis_lib.Redis | None:
         if self._redis is None:
@@ -48,6 +51,32 @@ class KGWriter:
     def stop(self) -> None:
         self._running = False
         self.flush()
+        self._idempotency.close()
+
+    def _load_cursor(self, stream_name: str) -> str:
+        try:
+            conn = self._get_db()
+            row = conn.execute(
+                "SELECT last_id FROM stream_cursors WHERE stream_name = ?", (stream_name,)
+            ).fetchone()
+            conn.close()
+            if row:
+                return row[0]
+        except Exception:
+            pass
+        return "0"
+
+    def _save_cursor(self, stream_name: str, last_id: str) -> None:
+        try:
+            conn = self._get_db()
+            conn.execute(
+                "INSERT OR REPLACE INTO stream_cursors (stream_name, last_id) VALUES (?, ?)",
+                (stream_name, last_id),
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
 
     def _consume_loop(self) -> None:
         r = self._get_redis()
@@ -55,8 +84,9 @@ class KGWriter:
             logger.error("No Redis available for KG writer, facts will not be consumed")
             return
 
-        last_id = "0"
+        last_id = self._load_cursor("facts")
         last_flush = time.monotonic()
+        messages_since_cursor_save = 0
         while self._running:
             try:
                 raw = r.xread({"facts": last_id}, count=10, block=2000)
@@ -81,6 +111,21 @@ class KGWriter:
                 if len(self._buffer) >= self.BATCH_SIZE or elapsed >= 2.0:
                     self.flush()
                     last_flush = time.monotonic()
+
+            messages_since_cursor_save += 1
+            if messages_since_cursor_save >= 50:
+                self._save_cursor("facts", last_id)
+                messages_since_cursor_save = 0
+
+            self._cleanup_counter += 1
+            if self._cleanup_counter >= 200:
+                self._cleanup_counter = 0
+                try:
+                    removed = self._idempotency.cleanup_expired()
+                    if removed:
+                        logger.debug("Cleaned up expired idempotency keys", extra={"count": removed})
+                except Exception:
+                    pass
 
     def _process_message(self, msg_data: dict[bytes, bytes]) -> None:
         try:

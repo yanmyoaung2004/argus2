@@ -140,13 +140,39 @@ class SynthesisAgent(BaseAgent):
     def stop(self) -> None:
         self._running = False
 
+    def _load_cursor(self) -> str:
+        try:
+            conn = self._get_db()
+            row = conn.execute(
+                "SELECT last_id FROM stream_cursors WHERE stream_name = 'facts'"
+            ).fetchone()
+            conn.close()
+            if row:
+                return row[0]
+        except Exception:
+            pass
+        return "0"
+
+    def _save_cursor(self, last_id: str) -> None:
+        try:
+            conn = self._get_db()
+            conn.execute(
+                "INSERT OR REPLACE INTO stream_cursors (stream_name, last_id) VALUES ('facts', ?)",
+                (last_id,),
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
     def _consume_loop(self) -> None:
         r = self._get_redis()
         if r is None:
             logger.error("No Redis available for synthesis agent")
             return
 
-        last_id = "0"
+        last_id = self._load_cursor()
+        cursor_save_counter = 0
         while self._running:
             try:
                 raw = r.xread({"facts": last_id}, count=10, block=2000)
@@ -172,6 +198,11 @@ class SynthesisAgent(BaseAgent):
                     self._batch_depth -= 1
                     if self._entity_buffer:
                         self._flush_entity_buffer()
+
+            cursor_save_counter += 1
+            if cursor_save_counter >= 50:
+                self._save_cursor(last_id)
+                cursor_save_counter = 0
 
             self._edge_check_counter += 1
             if self._edge_check_counter >= 50:

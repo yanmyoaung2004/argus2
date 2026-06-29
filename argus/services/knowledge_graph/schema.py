@@ -68,6 +68,11 @@ CREATE TABLE IF NOT EXISTS processed_keys (
     created_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS stream_cursors (
+    stream_name TEXT PRIMARY KEY,
+    last_id TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS claims_fts USING fts5(
     statement, entity_name, content='claims', content_rowid='id'
 );

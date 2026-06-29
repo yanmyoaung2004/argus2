@@ -199,6 +199,7 @@ class AgentRunner:
                 "Agent budget limit reached",
                 extra={"agent": self.agent_type.value, "step_id": step.id, "error": str(exc)},
             )
+            self._dlq.push_to_dlq(parsed, f"BudgetError: {exc}")
             self._emit_progress(parsed["task_id"], step.id, "budget_exceeded", {
                 "error": str(exc),
             })
@@ -208,6 +209,7 @@ class AgentRunner:
                 "Agent budget exceeded",
                 extra={"agent": self.agent_type.value, "step_id": step.id, "error": str(exc)},
             )
+            self._dlq.push_to_dlq(parsed, f"BudgetExceededError: {exc}")
             self._emit_progress(parsed["task_id"], step.id, "budget_exceeded", {
                 "error": str(exc),
             })

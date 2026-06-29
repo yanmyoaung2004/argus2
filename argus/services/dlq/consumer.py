@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import time
 from typing import Any
 
 import redis as redis_lib
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from argus.services.knowledge_graph.schema import init_db
 from argus.shared.config import settings
 
 logger = logging.getLogger(__name__)
@@ -21,9 +23,42 @@ class DLQConsumer:
     MAX_MESSAGES_PER_READ = 10
     ALERT_THRESHOLD = 100
 
-    def __init__(self, redis_client: redis_lib.Redis | None = None) -> None:
+    def __init__(
+        self,
+        redis_client: redis_lib.Redis | None = None,
+        db_path: str | None = None,
+    ) -> None:
         self._redis = redis_client
+        self._db_path = db_path or settings.sqlite_path
         self._running = False
+
+    def _get_db(self) -> sqlite3.Connection:
+        return init_db(self._db_path)
+
+    def _load_cursor(self) -> str:
+        try:
+            conn = self._get_db()
+            row = conn.execute(
+                "SELECT last_id FROM stream_cursors WHERE stream_name = 'dlq'"
+            ).fetchone()
+            conn.close()
+            if row:
+                return row[0]
+        except Exception:
+            pass
+        return "0"
+
+    def _save_cursor(self, last_id: str) -> None:
+        try:
+            conn = self._get_db()
+            conn.execute(
+                "INSERT OR REPLACE INTO stream_cursors (stream_name, last_id) VALUES ('dlq', ?)",
+                (last_id,),
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
 
     def _get_redis(self) -> redis_lib.Redis | None:
         if self._redis is None:
@@ -70,7 +105,8 @@ class DLQConsumer:
             logger.error("No Redis available for DLQ consumer")
             return
 
-        last_id = "0"
+        last_id = self._load_cursor()
+        cursor_save_counter = 0
         while self._running:
             try:
                 raw: list[Any] = list(
@@ -90,6 +126,11 @@ class DLQConsumer:
                     msg_id, msg_data = msg_entry
                     last_id = msg_id
                     self._process_dead_message(msg_id, msg_data)
+
+            cursor_save_counter += 1
+            if cursor_save_counter >= 20:
+                self._save_cursor(last_id)
+                cursor_save_counter = 0
 
     def _process_dead_message(self, msg_id: bytes, msg_data: dict[bytes, bytes]) -> None:
         r = self._get_redis()
