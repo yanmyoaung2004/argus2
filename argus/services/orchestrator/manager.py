@@ -27,6 +27,7 @@ class ResearchManager:
     ) -> None:
         self._redis = redis_client
         self._planner = planner or LLMPlanner()
+        self._lock = threading.Lock()
         self._tasks: dict[str, ResearchTask] = {}
         self._timeouts: dict[str, IdleTimeoutMonitor] = {}
         self._completed_steps: dict[str, set[int]] = {}
@@ -56,7 +57,8 @@ class ResearchManager:
             status=ResearchStatus.PLANNING,
         )
         task_id_str = str(task.task_id)
-        self._tasks[task_id_str] = task
+        with self._lock:
+            self._tasks[task_id_str] = task
 
         try:
             plan = self._planner.decompose(query)
@@ -85,7 +87,8 @@ class ResearchManager:
             logger.warning("No Redis available, skipping plan push", extra={"task_id": task_id})
             return
 
-        task = self._tasks.get(task_id)
+        with self._lock:
+            task = self._tasks.get(task_id)
         query = task.query if task else ""
         for step in plan.steps:
             message = {
@@ -106,9 +109,12 @@ class ResearchManager:
         wait = getattr(settings, "research_idle_timeout_minutes", default_wait)
         while not self._shutdown:
             time.sleep(min(wait * 60, 30.0))
-            for task_id in list(self._tasks.keys()):
-                task = self._tasks[task_id]
-                if task.status != ResearchStatus.RUNNING or task.plan is None:
+            with self._lock:
+                task_ids = list(self._tasks.keys())
+            for task_id in task_ids:
+                with self._lock:
+                    task = self._tasks.get(task_id)
+                if task is None or task.status != ResearchStatus.RUNNING or task.plan is None:
                     continue
                 if self._all_steps_done(task_id, task.plan):
                     logger.info("All steps complete, finalizing task", extra={"task_id": task_id})
@@ -139,7 +145,8 @@ class ResearchManager:
                 return
             out_dir = Path.home() / ".argus" / "reports"
             out_dir.mkdir(parents=True, exist_ok=True)
-            task = self._tasks.get(task_id)
+            with self._lock:
+                task = self._tasks.get(task_id)
             raw = task.query if task else "research"
             safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in raw)
             slug = safe[:40].strip().replace(" ", "_")
@@ -155,34 +162,37 @@ class ResearchManager:
             monitor.mark_activity()
 
     def complete_task(self, task_id: str) -> None:
-        task = self._tasks.get(task_id)
-        if task is not None and task.status not in (ResearchStatus.DONE, ResearchStatus.FAILED):
-            task.status = ResearchStatus.DONE
-            from datetime import datetime, timezone
-            task.completed_at = datetime.now(timezone.utc)
-            logger.info("Research completed", extra={"task_id": task_id})
-            self._save_report(task_id)
-        monitor = self._timeouts.pop(task_id, None)
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is not None and task.status not in (ResearchStatus.DONE, ResearchStatus.FAILED):
+                task.status = ResearchStatus.DONE
+                from datetime import datetime
+                task.completed_at = datetime.now(datetime.UTC)
+                logger.info("Research completed", extra={"task_id": task_id})
+            monitor = self._timeouts.pop(task_id, None)
         if monitor is not None:
             monitor.stop()
+        self._save_report(task_id)
 
     def fail_task(self, task_id: str, error: str) -> None:
-        task = self._tasks.get(task_id)
-        if task is not None and task.status != ResearchStatus.DONE:
-            task.status = ResearchStatus.FAILED
-            task.error_message = error
-            logger.error("Research failed", extra={"task_id": task_id, "error": error})
-        monitor = self._timeouts.pop(task_id, None)
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is not None and task.status != ResearchStatus.DONE:
+                task.status = ResearchStatus.FAILED
+                task.error_message = error
+                logger.error("Research failed", extra={"task_id": task_id, "error": error})
+            monitor = self._timeouts.pop(task_id, None)
         if monitor is not None:
             monitor.stop()
 
     async def check_timeouts(self) -> None:
         if self._shutdown:
             return
-        expired_ids = [
-            tid for tid, mon in self._timeouts.items()
-            if mon.is_expired()
-        ]
+        with self._lock:
+            expired_ids = [
+                tid for tid, mon in self._timeouts.items()
+                if mon.is_expired()
+            ]
         for tid in expired_ids:
             msg = f"Idle timeout exceeded ({settings.research_idle_timeout_minutes} min)"
             self.fail_task(tid, msg)
@@ -190,13 +200,16 @@ class ResearchManager:
     async def shutdown(self) -> None:
         self._shutdown = True
         logger.info("Research manager shutting down")
-        for task_id in list(self._timeouts.keys()):
-            item = self._timeouts.get(task_id)
-            if item is not None:
-                item.stop()
-        self._timeouts.clear()
+        with self._lock:
+            for task_id in list(self._timeouts.keys()):
+                item = self._timeouts.get(task_id)
+                if item is not None:
+                    item.stop()
+            self._timeouts.clear()
 
     def list_tasks(self) -> list[dict[str, Any]]:
+        with self._lock:
+            tasks_snapshot = list(self._tasks.values())
         return [
             {
                 "task_id": str(t.task_id),
@@ -207,11 +220,12 @@ class ResearchManager:
                 "total_cost": t.total_cost,
                 "error_message": t.error_message,
             }
-            for t in self._tasks.values()
+            for t in tasks_snapshot
         ]
 
     def get_task_status(self, task_id: str) -> dict[str, Any] | None:
-        task = self._tasks.get(task_id)
+        with self._lock:
+            task = self._tasks.get(task_id)
         if task is None:
             return None
         return {
@@ -228,7 +242,8 @@ class ResearchManager:
         }
 
     async def get_report(self, task_id: str) -> str | None:
-        task = self._tasks.get(task_id)
+        with self._lock:
+            task = self._tasks.get(task_id)
         if task is None:
             return None
         from argus.ui.report_generator import MarkdownReportGenerator
@@ -236,7 +251,8 @@ class ResearchManager:
         return gen.generate(task_id)
 
     async def get_html_report(self, task_id: str) -> str | None:
-        task = self._tasks.get(task_id)
+        with self._lock:
+            task = self._tasks.get(task_id)
         if task is None:
             return None
         from argus.ui.report_generator import HTMLReportGenerator

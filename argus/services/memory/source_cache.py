@@ -13,6 +13,9 @@ class SourceCache:
         self._db_path = db_path or _s.sqlite_path
         self._ttl = ttl or _s.source_cache_ttl
         self._local: threading.local = threading.local()
+        self._hits = 0
+        self._misses = 0
+        self._stats_lock = threading.Lock()
 
     def _get_db(self) -> Any:  # noqa: ANN401
         conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
@@ -107,8 +110,9 @@ class SourceCache:
         total_size = conn.execute(
             "SELECT SUM(LENGTH(markdown)) FROM source_cache"
         ).fetchone()
-        hits = getattr(self, "_hits", 0)
-        misses = getattr(self, "_misses", 0)
+        with self._stats_lock:
+            hits = self._hits
+            misses = self._misses
         total_requests = hits + misses
         hit_rate = hits / total_requests if total_requests > 0 else 0.0
 
@@ -127,7 +131,9 @@ class SourceCache:
         }
 
     def _track_hit(self) -> None:
-        self._hits = getattr(self, "_hits", 0) + 1
+        with self._stats_lock:
+            self._hits += 1
 
     def _track_miss(self) -> None:
-        self._misses = getattr(self, "_misses", 0) + 1
+        with self._stats_lock:
+            self._misses += 1

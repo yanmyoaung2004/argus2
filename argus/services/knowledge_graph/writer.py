@@ -111,7 +111,8 @@ class KGWriter:
             )
             for fact in facts_list:
                 fact["task_id"] = fact.get("task_id", task_id)
-                self._buffer.append(fact)
+                with self._lock:
+                    self._buffer.append(fact)
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             logger.warning("Invalid fact message", extra={"error": str(exc)})
 
