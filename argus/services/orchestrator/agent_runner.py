@@ -92,12 +92,19 @@ class AgentRunner:
         self._loop.close()
 
     def _consume_loop(self, consumer_name: str) -> None:
-        r = self._get_redis()
-        if r is None:
-            logger.error("No Redis for agent runner", extra={"agent": self.agent_type.value})
-            return
-
+        retry_delay = 1.0
         while self._running:
+            r = self._get_redis()
+            if r is None:
+                logger.warning(
+                    "No Redis for agent runner, retrying",
+                    extra={"agent": self.agent_type.value, "retry_delay": retry_delay},
+                )
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 30.0)
+                continue
+            retry_delay = 1.0
+
             processed = self._process_once(consumer_name, r)
             if not processed:
                 time.sleep(0.1)

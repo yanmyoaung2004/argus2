@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import logging
 import time
 import warnings
 from abc import ABC, abstractmethod
@@ -11,6 +13,8 @@ import httpx
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from argus.shared.config import settings
+
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 
@@ -20,7 +24,7 @@ def _is_retryable_scrape_error(exc: Exception) -> bool:
         return not (400 <= exc.response.status_code < 500)
     return True
 
-from argus.shared.config import settings
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -98,11 +102,20 @@ def _html_to_markdown(html: str, url: str) -> str:  # noqa: ARG001
     return "\n".join(lines)
 
 
+MAX_RESPONSE_SIZE = 10 * 1024 * 1024
+
+TEXT_CONTENT_TYPES = {
+    "text/html", "text/plain", "text/markdown",
+    "application/xhtml+xml", "application/xml",
+}
+
+
 class HttpxScraper(ScrapeProvider):
     def __init__(self) -> None:
         self._client = httpx.Client(
             follow_redirects=True,
             timeout=30.0,
+            limits=httpx.Limits(max_response_buffer_size=MAX_RESPONSE_SIZE),
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -120,11 +133,26 @@ class HttpxScraper(ScrapeProvider):
     )
     def scrape(self, url: str) -> ScrapeResponse:
         start = time.monotonic()
-        response = self._client.get(url)
-        response.raise_for_status()
+        try:
+            response = self._client.get(url)
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            raise
+        except Exception:
+            return ScrapeResponse(
+                metadata=ScrapeMetadata(provider="httpx", latency_ms=0, cost=0.0),
+            )
 
         content_type = response.headers.get("content-type", default="").split(";")[0]
+        if content_type not in TEXT_CONTENT_TYPES:
+            return ScrapeResponse(
+                metadata=ScrapeMetadata(provider="httpx", latency_ms=0, cost=0.0),
+            )
         html = response.text
+        if not html.strip():
+            return ScrapeResponse(
+                metadata=ScrapeMetadata(provider="httpx", latency_ms=0, cost=0.0),
+            )
         markdown = _html_to_markdown(html, url)
         content_hash = sha256(markdown.encode()).hexdigest()
 
@@ -149,6 +177,26 @@ class PlaywrightScraper(ScrapeProvider):
     def __init__(self) -> None:
         self._browser: Any = None  # noqa: ANN401
 
+    def _get_browser(self) -> Any:  # noqa: ANN401
+        if self._browser is None:
+            try:
+                from playwright.sync_api import sync_playwright
+                self._pw = sync_playwright().start()
+                self._browser = self._pw.chromium.launch(headless=True)
+            except ImportError:
+                return None
+        return self._browser
+
+    def _close_browser(self) -> None:
+        if self._browser is not None:
+            with contextlib.suppress(Exception):
+                self._browser.close()
+            self._browser = None
+        if hasattr(self, "_pw") and self._pw is not None:
+            with contextlib.suppress(Exception):
+                self._pw.stop()
+            self._pw = None
+
     @retry(
         stop=stop_after_attempt(settings.llm_retry_max_attempts),
         wait=wait_exponential(
@@ -159,19 +207,22 @@ class PlaywrightScraper(ScrapeProvider):
     def scrape(self, url: str) -> ScrapeResponse:
         start = time.monotonic()
 
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError:
+        browser = self._get_browser()
+        if browser is None:
             return ScrapeResponse(
                 metadata=ScrapeMetadata(provider="playwright", latency_ms=0, cost=0.0),
             )
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+        try:
             page = browser.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=30000)
             html = page.content()
-            browser.close()
+            page.close()
+        except Exception:
+            self._close_browser()
+            return ScrapeResponse(
+                metadata=ScrapeMetadata(provider="playwright", latency_ms=0, cost=0.0),
+            )
 
         markdown = _html_to_markdown(html, url)
         content_hash = sha256(markdown.encode()).hexdigest()
@@ -247,13 +298,17 @@ class WebScraper:
         self._firecrawl: FirecrawlScraper | None = None
 
     def scrape(self, url: str) -> ScrapeResponse:
+        errors: list[str] = []
+
         result = self._httpx.scrape(url)
         if result.content and result.content.markdown.strip():
             return result
+        errors.append("httpx: no content returned")
 
         result = self._playwright.scrape(url)
         if result.content and result.content.markdown.strip():
             return result
+        errors.append("playwright: no content returned")
 
         if settings.firecrawl_api_key:
             self._firecrawl = FirecrawlScraper(
@@ -261,5 +316,11 @@ class WebScraper:
                 base_url=settings.firecrawl_base_url,
             )
             result = self._firecrawl.scrape(url)
+            if result.content and result.content.markdown.strip():
+                return result
+            errors.append("firecrawl: no content returned")
+        else:
+            errors.append("firecrawl: not configured")
 
+        logger.warning("All scrapers failed", extra={"url": url, "errors": "; ".join(errors)})
         return result
