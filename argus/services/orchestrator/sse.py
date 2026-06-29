@@ -29,7 +29,10 @@ class SSEStreamer:
         r = self._get_redis()
         last_id = "0"
         idle_cycles = 0
-        max_idle_cycles = 150  # 150 * (2s block + 0.1s sleep) ~= 5 min idle timeout
+        block_ms = 2000
+        sleep_s = 0.1
+        cycle_s = (block_ms / 1000) + sleep_s
+        max_idle_cycles = max(1, int(settings.sse_idle_timeout_seconds / cycle_s))
 
         while True:
             if r is None:

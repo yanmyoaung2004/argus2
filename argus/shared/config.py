@@ -146,6 +146,17 @@ class Settings(BaseSettings):
     # DuckDuckGo rate limiting
     ddg_rate_limit_per_second: float = 1.0
 
+    # SSE
+    sse_idle_timeout_seconds: int = 300
+
+    # Credibility
+    authoritative_domains: str = (
+        "wikipedia.org,britannica.com,reuters.com,ap.org,"
+        "bbc.com,bbc.co.uk,nature.com,science.org,"
+        "nih.gov,who.int,un.org,worldbank.org,"
+        "scholar.google.com,arxiv.org,ieee.org,acm.org"
+    )
+
     # Agent types by task
     agent_for_task: dict[str, str] = {
         "discover": "scout",

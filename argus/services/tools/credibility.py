@@ -3,7 +3,11 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 
+from argus.shared.config import settings
+
 AUTHORITATIVE_DOMAINS: set[str] = {
+    d.strip() for d in settings.authoritative_domains.split(",") if d.strip()
+} or {
     "wikipedia.org", "britannica.com", "reuters.com", "ap.org",
     "bbc.com", "bbc.co.uk", "nature.com", "science.org",
     "nih.gov", "who.int", "un.org", "worldbank.org",
