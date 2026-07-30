@@ -5,10 +5,10 @@ import sqlite3
 import pytest
 
 from argus.services.knowledge_graph.queries import (
-    get_entity,
-    get_claims_for_entity,
-    get_provenance_chain,
     find_conflicts,
+    get_claims_for_entity,
+    get_entity,
+    get_provenance_chain,
     search_claims,
 )
 from argus.services.knowledge_graph.schema import init_db

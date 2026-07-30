@@ -32,7 +32,6 @@ AGENT_MAP: dict[AgentType, type] = {
 
 class AgentRunner:
     CONSUMER_GROUP = settings.redis_consumer_group
-    CLAIM_TIMEOUT_MS = 30000
 
     def __init__(
         self,

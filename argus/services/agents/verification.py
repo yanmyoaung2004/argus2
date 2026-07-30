@@ -95,7 +95,8 @@ class VerificationAgent(BaseAgent):
             time.sleep(5)
             return self._get_claims_for_task(task_id)
 
-        deadline = time.time() + 135
+        from argus.shared.config import settings as _s
+        deadline = time.time() + _s.agent_wait_seconds
         last_id = "0"
         stream = f"progress:{task_id}"
         try:

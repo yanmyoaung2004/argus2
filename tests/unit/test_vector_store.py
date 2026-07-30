@@ -8,11 +8,10 @@ from argus.services.memory.vector_store import (
     EMBEDDING_DIM,
     _mock_embedding,
     ensure_all_tables,
-    ensure_vec_table,
-    upsert_entity_embedding,
     find_similar_entities,
-    reindex_entity_embeddings,
     load_vec,
+    reindex_entity_embeddings,
+    upsert_entity_embedding,
 )
 
 

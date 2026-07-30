@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -108,6 +108,7 @@ class TestCompleteTask:
 
     def test_skip_completed_task(self, manager: ResearchManager) -> None:
         from uuid import uuid4
+
         from argus.shared.models import ResearchTask
         tid = str(uuid4())
         task = ResearchTask(task_id=tid, query="test")
@@ -120,6 +121,7 @@ class TestCompleteTask:
 class TestFailTask:
     def test_fails_running_task(self, manager: ResearchManager) -> None:
         from uuid import uuid4
+
         from argus.shared.models import ResearchTask
         tid = str(uuid4())
         task = ResearchTask(task_id=tid, query="test")

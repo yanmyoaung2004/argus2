@@ -32,7 +32,8 @@ class ScoutAgent(BaseAgent):
 
         search_query = step.goal.replace("Research ", "").strip()
         query = getattr(step, "query", "") or search_query
-        search_response = self._searcher.search(search_query, max_results=10)
+        from argus.shared.config import settings as _s
+        search_response = self._searcher.search(search_query, max_results=_s.scout_max_results)
 
         if not search_response.results:
             logger.info("No search results found", extra={"step_id": step.id})

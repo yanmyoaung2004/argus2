@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from argus.llm.provider_config import ProviderEntry, KNOWN_MODELS, DEFAULT_LLM_DEFS, SEARCH_PROVIDER_DEFS
+from argus.llm.provider_config import (
+    DEFAULT_LLM_DEFS,
+    KNOWN_MODELS,
+    SEARCH_PROVIDER_DEFS,
+    ProviderEntry,
+)
 
 
 class TestProviderEntry:

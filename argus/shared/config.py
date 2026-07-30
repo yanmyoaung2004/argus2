@@ -157,6 +157,19 @@ class Settings(BaseSettings):
         "scholar.google.com,arxiv.org,ieee.org,acm.org"
     )
 
+    # Agent timeouts and batch sizes
+    agent_wait_seconds: int = 135
+    deep_dive_batch_size: int = 5
+    deep_dive_max_content_chars: int = 8000
+    scout_max_results: int = 10
+    synthesis_max_entities: int = 20
+    synthesis_max_claims: int = 30
+
+    # Entity matching thresholds
+    merge_threshold: float = 0.85
+    llm_merge_threshold: float = 0.70
+    edge_cooccur_threshold: int = 2
+
     # Agent types by task
     agent_for_task: dict[str, str] = {
         "discover": "scout",

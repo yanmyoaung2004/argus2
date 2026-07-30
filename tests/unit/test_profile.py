@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from argus.llm.profile import (
-    StageAssignment,
-    StageProfile,
     ALL_STAGES,
     STAGE_LABELS,
+    StageAssignment,
+    StageProfile,
 )
 
 

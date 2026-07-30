@@ -2,17 +2,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from argus.services.tools.scraper import (
-    ScrapedContent,
-    ScrapeMetadata,
-    ScrapeResponse,
-    _html_to_markdown,
+    TEXT_CONTENT_TYPES,
     HttpxScraper,
     PlaywrightScraper,
+    ScrapedContent,
+    ScrapeResponse,
     WebScraper,
-    TEXT_CONTENT_TYPES,
+    _html_to_markdown,
 )
 
 

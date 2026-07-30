@@ -18,10 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class SynthesisAgent(BaseAgent):
-    SIMILARITY_THRESHOLD_MERGE = 0.85
-    SIMILARITY_THRESHOLD_LLM = 0.70
-    EDGE_COOCCUR_THRESHOLD = 2
-
     def __init__(
         self,
         router: Any = None,
@@ -102,11 +98,11 @@ class SynthesisAgent(BaseAgent):
     ) -> str | None:
         ctx = f" for the query: {query}" if query else ""
         entity_block = "\n".join(
-            f"- {e[0]} ({e[1]}): {e[2] or 'no description'}" for e in entities[:20]
+            f"- {e[0]} ({e[1]}): {e[2] or 'no description'}" for e in entities[:settings.synthesis_max_entities]
         ) if entities else "None found"
         claim_block = "\n".join(
             f"- [{c[1]:.0%} confidence] {c[0]} (entity: {c[2]}, attribute: {c[3]})"
-            for c in claims[:30]
+            for c in claims[:settings.synthesis_max_claims]
         ) if claims else "None found"
 
         prompt = (
@@ -249,9 +245,9 @@ class SynthesisAgent(BaseAgent):
         match = self._find_match(conn, entity)
         if match is None:
             self._insert_entity(conn, entity, task_id)
-        elif match["similarity"] >= self.SIMILARITY_THRESHOLD_MERGE:
+        elif match["similarity"] >= settings.merge_threshold:
             self._merge_entity(conn, match["id"], entity, task_id)
-        elif match["similarity"] >= self.SIMILARITY_THRESHOLD_LLM:
+        elif match["similarity"] >= settings.llm_merge_threshold:
             should_merge = self._ask_llm(entity.name, match["name"])
             if should_merge:
                 self._merge_entity(conn, match["id"], entity, task_id)
@@ -298,7 +294,7 @@ class SynthesisAgent(BaseAgent):
 
         for row in candidates:
             score = SequenceMatcher(None, name_lower, row[1].lower()).ratio()
-            if score > best_score and score >= self.SIMILARITY_THRESHOLD_LLM:
+            if score > best_score and score >= settings.llm_merge_threshold:
                 best_score = score
                 best = {"id": row[0], "name": row[1], "similarity": score}
 
@@ -357,7 +353,7 @@ class SynthesisAgent(BaseAgent):
 
     def _ask_llm(self, name_a: str, name_b: str) -> bool:
         score = SequenceMatcher(None, name_a.lower(), name_b.lower()).ratio()
-        if score >= self.SIMILARITY_THRESHOLD_MERGE:
+        if score >= settings.merge_threshold:
             return True
         try:
             prompt = (
@@ -373,7 +369,7 @@ class SynthesisAgent(BaseAgent):
                 self._cost_tracker.record_cost(cost, category="llm")
             return text.strip().lower().startswith("yes")
         except (RuntimeError, Exception):
-            return score >= (self.SIMILARITY_THRESHOLD_MERGE + self.SIMILARITY_THRESHOLD_LLM) / 2
+            return score >= (settings.merge_threshold + settings.llm_merge_threshold) / 2
 
     def _ensure_related_edges(self, conn: sqlite3.Connection) -> None:
         cursor = conn.execute(
@@ -384,7 +380,7 @@ class SynthesisAgent(BaseAgent):
                  AND c1.entity_id != c2.entity_id
                GROUP BY c1.entity_id, c2.entity_id
                HAVING cooccur >= ?""",
-            (self.EDGE_COOCCUR_THRESHOLD,),
+            (settings.edge_cooccur_threshold,),
         )
         added = 0
         for row in cursor.fetchall():

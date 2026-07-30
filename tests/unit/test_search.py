@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from argus.services.tools.search import SearchResult, SearchResponse, SearchMetadata
+from argus.services.tools.search import SearchMetadata, SearchResponse, SearchResult
 
 
 class TestSearchDataClasses:

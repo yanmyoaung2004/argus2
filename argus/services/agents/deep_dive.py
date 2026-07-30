@@ -14,11 +14,9 @@ from argus.shared.models import AgentType, Claim, Fact, Source, TaskStep
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 5
-MAX_CONTENT_CHARS = 8000
-
-
 def _build_extraction_prompt(sources: list[dict[str, str]], query: str = "") -> str:
+    from argus.shared.config import settings as _s
+    max_chars = _s.deep_dive_max_content_chars
     lines: list[str] = [
         "Extract factual claims from the following sources. "
         "For each claim, identify: the statement, the entity it refers to, "
@@ -34,7 +32,7 @@ def _build_extraction_prompt(sources: list[dict[str, str]], query: str = "") -> 
         lines.append(f"--- Source {i} ---")
         lines.append(f"URL: {src.get('url', 'unknown')}")
         lines.append(f"Title: {src.get('title', '')}")
-        lines.append(f"Content:\n{src.get('content', '')[:MAX_CONTENT_CHARS]}")
+        lines.append(f"Content:\n{src.get('content', '')[:max_chars]}")
         lines.append("")
     return "\n".join(lines)
 
@@ -108,8 +106,10 @@ class DeepDiveAgent(BaseAgent):
         all_sources: list[Source] = []
 
         query = getattr(step, "query", "")
-        for i in range(0, len(sources_data), BATCH_SIZE):
-            batch = sources_data[i:i + BATCH_SIZE]
+        from argus.shared.config import settings as _s
+        batch_size = _s.deep_dive_batch_size
+        for i in range(0, len(sources_data), batch_size):
+            batch = sources_data[i:i + batch_size]
             claims, sources = self._extract_batch(batch, str(step.id), query=query)
             all_claims.extend(claims)
             all_sources.extend(sources)
@@ -134,7 +134,7 @@ class DeepDiveAgent(BaseAgent):
             time.sleep(5)
             return self._get_source_urls_for_task(task_id)
 
-        deadline = time.time() + 135
+        deadline = time.time() + settings.agent_wait_seconds
         last_id = "0"
         stream = f"progress:{task_id}"
         try:
@@ -242,10 +242,11 @@ class DeepDiveAgent(BaseAgent):
             ))
 
             ctx = f"Research context: {query}\n\n" if query else ""
+            from argus.shared.config import settings as _s
             single_prompt = (
                 f"{ctx}Extract factual claims from this source.\n"
                 f"URL: {src['url']}\n"
-                f"Content:\n{src['content'][:MAX_CONTENT_CHARS]}\n\n"
+                f"Content:\n{src['content'][:_s.deep_dive_max_content_chars]}\n\n"
                 f"Return a JSON list of objects with keys: statement, entity_name, attribute."
             )
 
