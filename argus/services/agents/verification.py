@@ -161,18 +161,8 @@ class VerificationAgent(BaseAgent):
         claim_a: dict[str, Any],
         claim_b: dict[str, Any],
     ) -> dict[str, Any] | None:
-        query_hint = self._query
-        query_context = f"\nResearch context: {query_hint}\n" if query_hint else ""
-        prompt = (
-            f"Determine if the following two claims are contradictory, "
-            f"supportive, or unrelated. Return a JSON object with keys: "
-            f"relationship (contradictory/supportive/unrelated), reason."
-            f"{query_context}"
-            f"Claim A: {claim_a.get('statement', '')}\n"
-            f"Source A: {claim_a.get('source_urls', [])}\n\n"
-            f"Claim B: {claim_b.get('statement', '')}\n"
-            f"Source B: {claim_b.get('source_urls', [])}"
-        )
+        from argus.llm.prompts.verification import check_conflict as _conflict
+        prompt = _conflict(claim_a, claim_b, query_hint=self._query)
 
         try:
             text, provider, cost = self._router.complete(

@@ -96,26 +96,8 @@ class SynthesisAgent(BaseAgent):
         entities: list[Any],
         claims: list[Any],
     ) -> str | None:
-        ctx = f" for the query: {query}" if query else ""
-        entity_block = "\n".join(
-            f"- {e[0]} ({e[1]}): {e[2] or 'no description'}" for e in entities[:settings.synthesis_max_entities]
-        ) if entities else "None found"
-        claim_block = "\n".join(
-            f"- [{c[1]:.0%} confidence] {c[0]} (entity: {c[2]}, attribute: {c[3]})"
-            for c in claims[:settings.synthesis_max_claims]
-        ) if claims else "None found"
-
-        prompt = (
-            f"Synthesize the research findings{ctx}.\n\n"
-            f"Entities found:\n{entity_block}\n\n"
-            f"Claims extracted:\n{claim_block}\n\n"
-            f"Provide a concise synthesis covering:\n"
-            f"1. Key entities and their roles\n"
-            f"2. Main findings and facts\n"
-            f"3. Any contradictions or uncertainties\n"
-            f"4. Overall conclusion\n\n"
-            f"Return your synthesis as plain text with markdown formatting."
-        )
+        from argus.llm.prompts.synthesis import generate_synthesis as _synthesis
+        prompt = _synthesis(query, entities, claims)
 
         try:
             self._check_budget(estimated_cost=0.02)
@@ -356,11 +338,8 @@ class SynthesisAgent(BaseAgent):
         if score >= settings.merge_threshold:
             return True
         try:
-            prompt = (
-                f"Do these two entity names refer to the same real-world entity?\n"
-                f"Entity A: '{name_a}'\nEntity B: '{name_b}'\n"
-                f"Answer ONLY with 'yes' or 'no'."
-            )
+            from argus.llm.prompts.synthesis import ask_merge as _merge_prompt
+            prompt = _merge_prompt(name_a, name_b)
             text, provider, cost = self._router.complete(
                 task_type="synthesis",
                 prompt=prompt,

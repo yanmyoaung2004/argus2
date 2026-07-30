@@ -15,26 +15,8 @@ from argus.shared.models import AgentType, Claim, Fact, Source, TaskStep
 logger = logging.getLogger(__name__)
 
 def _build_extraction_prompt(sources: list[dict[str, str]], query: str = "") -> str:
-    from argus.shared.config import settings as _s
-    max_chars = _s.deep_dive_max_content_chars
-    lines: list[str] = [
-        "Extract factual claims from the following sources. "
-        "For each claim, identify: the statement, the entity it refers to, "
-        "and a confidence level (high/medium/low). "
-        "Return the results as a JSON list of objects with keys: "
-        "statement, entity_name, attribute, confidence.",
-        "",
-    ]
-    if query:
-        lines.insert(2, f"Research context: {query}")
-        lines.insert(3, "")
-    for i, src in enumerate(sources, start=1):
-        lines.append(f"--- Source {i} ---")
-        lines.append(f"URL: {src.get('url', 'unknown')}")
-        lines.append(f"Title: {src.get('title', '')}")
-        lines.append(f"Content:\n{src.get('content', '')[:max_chars]}")
-        lines.append("")
-    return "\n".join(lines)
+    from argus.llm.prompts.deep_dive import extract_batch
+    return extract_batch(sources, query=query)
 
 
 class DeepDiveAgent(BaseAgent):
@@ -241,14 +223,8 @@ class DeepDiveAgent(BaseAgent):
                 credibility_score=0.5,
             ))
 
-            ctx = f"Research context: {query}\n\n" if query else ""
-            from argus.shared.config import settings as _s
-            single_prompt = (
-                f"{ctx}Extract factual claims from this source.\n"
-                f"URL: {src['url']}\n"
-                f"Content:\n{src['content'][:_s.deep_dive_max_content_chars]}\n\n"
-                f"Return a JSON list of objects with keys: statement, entity_name, attribute."
-            )
+            from argus.llm.prompts.deep_dive import extract_single as _single
+            single_prompt = _single(src, query=query)
 
             try:
                 text, provider, cost = self._get_router().complete(

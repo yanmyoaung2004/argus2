@@ -108,20 +108,8 @@ class ScoutAgent(BaseAgent):
         if not self._router:
             return []
 
-        formatted = []
-        for i, r in enumerate(results, start=1):
-            formatted.append(f"{i}. URL: {r.url}\n   Title: {r.title}\n   Snippet: {r.snippet}")
-
-        prompt = (
-            f"You are a research scout analyzing search results for the query: \"{query}\"\n\n"
-            f"For each search result below, determine if it's relevant to the research query. "
-            f"Return a JSON array of objects with keys:\n"
-            f"- url: the URL\n"
-            f"- title: the title\n"
-            f"- relevance: \"high\" / \"medium\" / \"low\"\n"
-            f"- extracted_entities: array of objects with keys name, type, description\n\n"
-            f"Search results:\n" + "\n".join(formatted)
-        )
+        from argus.llm.prompts.scout import analyze_results as _prompt
+        prompt = _prompt(query, results)
 
         try:
             self._check_budget(estimated_cost=0.01)

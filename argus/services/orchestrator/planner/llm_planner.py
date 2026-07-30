@@ -15,18 +15,13 @@ class LLMPlanner:
         self._router = router or CostAwareRouter()
 
     def decompose(self, query: str) -> ResearchPlan:
-        system_prompt = (
-            "You are a research planning assistant. Decompose a research query "
-            "into a sequence of steps. Each step has a type "
-            "(discover, extract, verify, synthesize), "
-            "a goal, and dependencies. Return your answer as valid JSON."
-        )
+        from argus.llm.prompts.planner import DECOMPOSE_SYSTEM, decompose_query
 
         try:
             response_text, provider, cost = self._router.complete(
                 task_type="planning",
-                prompt=f"Decompose this query into research steps:\n\n{query}",
-                system_prompt=system_prompt,
+                prompt=decompose_query(query),
+                system_prompt=DECOMPOSE_SYSTEM,
             )
         except RuntimeError:
             logger.warning("LLM planning failed, falling back to simple plan")
