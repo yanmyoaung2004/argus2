@@ -55,7 +55,6 @@ class SourceCredibilityScorer:
         rows = conn.execute(
             """SELECT DISTINCT s.id, s.url, s.credibility_score
                FROM sources s
-               JOIN claims c ON c.task_id = s.task_id
                WHERE s.task_id = ?""",
             (task_id,),
         ).fetchall()
@@ -67,15 +66,17 @@ class SourceCredibilityScorer:
                    JOIN claims c2 ON c.entity_id = c2.entity_id
                                  AND c.attribute = c2.attribute
                                  AND c.id != c2.id
-                   WHERE c.task_id = ? AND c.source_urls LIKE ?""",
-                (task_id, f"%{url}%"),
+                   JOIN claim_sources cs ON cs.claim_id = c.id
+                   WHERE cs.task_id = ? AND cs.source_url = ?""",
+                (task_id, url),
             ).fetchone()
             has_conflicts = (conflict_count[0] if conflict_count else 0) > 0
 
             boost_count = conn.execute(
                 """SELECT COUNT(*) FROM claims c
-                   WHERE c.task_id = ? AND c.source_urls LIKE ? AND c.confidence >= 0.8""",
-                (task_id, f"%{url}%"),
+                   JOIN claim_sources cs ON cs.claim_id = c.id
+                   WHERE cs.task_id = ? AND cs.source_url = ? AND c.confidence >= 0.8""",
+                (task_id, url),
             ).fetchone()
             has_high_confidence = (boost_count[0] if boost_count else 0) > 0
 

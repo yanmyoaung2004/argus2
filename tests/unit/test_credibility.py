@@ -29,6 +29,11 @@ def db() -> sqlite3.Connection:
         "(1, 'Claim A', 0.9, 1, '[\"https://a.com\"]', 'task-1'),"
         "(2, 'Claim B', 0.4, 1, '[\"https://b.com\"]', 'task-1')"
     )
+    conn.execute(
+        "INSERT INTO claim_sources (claim_id, source_url, task_id) VALUES "
+        "(1, 'https://a.com', 'task-1'),"
+        "(2, 'https://b.com', 'task-1')"
+    )
     conn.commit()
     return conn
 

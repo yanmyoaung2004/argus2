@@ -68,6 +68,16 @@ CREATE TABLE IF NOT EXISTS processed_keys (
     created_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS claim_sources (
+    claim_id INTEGER NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+    source_url TEXT NOT NULL,
+    task_id TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (claim_id, source_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_claim_sources_url ON claim_sources(source_url);
+CREATE INDEX IF NOT EXISTS idx_claim_sources_task_id ON claim_sources(task_id);
+
 CREATE TABLE IF NOT EXISTS stream_cursors (
     stream_name TEXT PRIMARY KEY,
     last_id TEXT NOT NULL

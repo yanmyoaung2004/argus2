@@ -201,6 +201,7 @@ class KGWriter:
                     )
                     inserted += 1
                 elif fact_type == "claim":
+                    source_urls = fact.get("source_urls", [])
                     cursor.execute(
                         "INSERT INTO claims "
                         "(statement, confidence, entity_id, attribute, source_urls, task_id) "
@@ -210,10 +211,18 @@ class KGWriter:
                             fact.get("confidence", 0.5),
                             fact.get("entity_name"),
                             fact.get("attribute"),
-                            json.dumps(fact.get("source_urls", [])),
+                            json.dumps(source_urls),
                             task_id,
                         ),
                     )
+                    claim_id = cursor.lastrowid
+                    if claim_id and source_urls:
+                        for url in source_urls:
+                            cursor.execute(
+                                "INSERT OR IGNORE INTO claim_sources (claim_id, source_url, task_id) "
+                                "VALUES (?, ?, ?)",
+                                (claim_id, url, task_id),
+                            )
                     inserted += 1
                 elif fact_type == "source":
                     cursor.execute(
