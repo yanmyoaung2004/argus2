@@ -240,6 +240,20 @@ class KGWriter:
                     inserted += 1
 
             conn.commit()
+
+            if inserted:
+                cursor.execute(
+                    """INSERT OR REPLACE INTO claims_fts(rowid, statement, entity_name)
+                       SELECT c.id, c.statement, COALESCE(e.name, '')
+                       FROM claims c
+                       LEFT JOIN entities e ON e.id = c.entity_id
+                       WHERE c.id IN (
+                           SELECT id FROM claims ORDER BY id DESC LIMIT ?
+                       )""",
+                    (inserted,),
+                )
+                conn.commit()
+
             conn.close()
             if inserted:
                 logger.info("KG writer flushed", extra={"inserted": inserted, "task_id": task_id})

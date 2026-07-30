@@ -25,6 +25,12 @@ def db() -> sqlite3.Connection:
         "(11, 'Claim 2', 1, 'attr2', 0.7, 't1'),"
         "(12, 'Claim 3', 2, 'attr1', 0.5, 't1')"
     )
+    conn.execute(
+        "INSERT INTO claims_fts(rowid, statement, entity_name) VALUES "
+        "(10, 'Claim 1', 'E1'),"
+        "(11, 'Claim 2', 'E1'),"
+        "(12, 'Claim 3', 'E2')"
+    )
     conn.execute("INSERT INTO sources (id, url, title, task_id) VALUES (100, 'https://a.com', 'Source A', 't1')")
     conn.commit()
     return conn
