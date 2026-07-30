@@ -4,8 +4,9 @@ import logging
 import time
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 
 from argus.services.heartbeat import get_alive_agents
@@ -23,10 +24,23 @@ logging.basicConfig(
 
 _start_time = time.time()
 
+security_scheme = HTTPBearer(auto_error=False)
+
+
+async def verify_token(credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme)) -> None:
+    if not settings.api_token:
+        return
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    if credentials.credentials != settings.api_token:
+        raise HTTPException(status_code=403, detail="Invalid auth token")
+
+
 app = FastAPI(
     title="Argus Research Agent",
     version="0.1.0",
     lifespan=lifespan,
+    dependencies=[Depends(verify_token)] if settings.api_token else [],
 )
 
 app.add_middleware(

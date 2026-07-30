@@ -149,6 +149,9 @@ class Settings(BaseSettings):
     # SSE
     sse_idle_timeout_seconds: int = 300
 
+    # API auth (empty = no auth required)
+    api_token: str = ""
+
     # Credibility
     authoritative_domains: str = (
         "wikipedia.org,britannica.com,reuters.com,ap.org,"
