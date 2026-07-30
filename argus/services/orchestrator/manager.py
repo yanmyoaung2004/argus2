@@ -166,8 +166,8 @@ class ResearchManager:
             task = self._tasks.get(task_id)
             if task is not None and task.status not in (ResearchStatus.DONE, ResearchStatus.FAILED):
                 task.status = ResearchStatus.DONE
-                from datetime import datetime
-                task.completed_at = datetime.now(datetime.UTC)
+                from datetime import datetime, timezone
+                task.completed_at = datetime.now(timezone.utc)
                 logger.info("Research completed", extra={"task_id": task_id})
             monitor = self._timeouts.pop(task_id, None)
         if monitor is not None:
