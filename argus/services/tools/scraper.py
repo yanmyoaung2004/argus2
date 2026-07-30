@@ -102,8 +102,6 @@ def _html_to_markdown(html: str, url: str) -> str:  # noqa: ARG001
     return "\n".join(lines)
 
 
-MAX_RESPONSE_SIZE = 10 * 1024 * 1024
-
 TEXT_CONTENT_TYPES = {
     "text/html", "text/plain", "text/markdown",
     "application/xhtml+xml", "application/xml",
@@ -115,7 +113,6 @@ class HttpxScraper(ScrapeProvider):
         self._client = httpx.Client(
             follow_redirects=True,
             timeout=30.0,
-            limits=httpx.Limits(max_response_buffer_size=MAX_RESPONSE_SIZE),
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -143,7 +140,7 @@ class HttpxScraper(ScrapeProvider):
                 metadata=ScrapeMetadata(provider="httpx", latency_ms=0, cost=0.0),
             )
 
-        content_type = response.headers.get("content-type", default="").split(";")[0]
+        content_type = response.headers.get("content-type", "").split(";")[0]
         if content_type not in TEXT_CONTENT_TYPES:
             return ScrapeResponse(
                 metadata=ScrapeMetadata(provider="httpx", latency_ms=0, cost=0.0),
